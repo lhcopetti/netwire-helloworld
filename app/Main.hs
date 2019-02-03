@@ -29,11 +29,37 @@ instance HasSize GameObject where
 instance HasPosition GameObject where
     getPosition = pos
 
+type Position = (Double, Double)
+type Velocity = (Double, Double)
+data GameObject = GO { pos  :: Position
+                     , size :: Double
+                     } deriving (Show)
 
 main :: IO ()
 main = SDL.withInit [SDL.InitEverything] $ do
     screen <- SDL.setVideoMode 200 200 32 [SDL.SWSurface]
     go screen clockSession_ challenge4
+
+go screen s w = do
+
+    evts <- accumEvent
+
+    (ds, s') <- stepSession s
+    (ex, w') <- stepWire w ds (Right evts)
+
+    let x' = either (const (GO (0, 0) 50)) id ex
+    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 255 255 255 >>= 
+        SDL.fillRect screen Nothing
+
+    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 0 50 200 >>= do
+        let xPos    = round . fst . pos $ x'
+        let yPos    = round . snd . pos $ x'
+        let goSize  = round . size      $ x'
+        SDL.fillRect screen (Just $ SDL.Rect xPos yPos goSize goSize)
+
+    SDL.flip screen
+    SDL.delay (1000 `div` 60)
+    go screen s' w' 
 
 challenge4 :: (HasTime t s, MonadFix m) => Wire s () m [SDL.Event] GameObject
 challenge4 = proc evts -> do
@@ -70,37 +96,6 @@ cachePosition :: Monoid e => Maybe Position -> (Maybe MemoryCommand, Position) -
 cachePosition _         (Just MSave, pos )  = (Just pos, Left mempty)
 cachePosition (Just x)  (Just MGet, _)  = (Just x  , Right x)
 cachePosition stored    _                   = (stored  , Left mempty)
-    
-mapInputControls :: (MemoryCommand, Position) -> Either Position Position
-mapInputControls (_, x)  = Right x
-
-
-type Position = (Double, Double)
-type Velocity = (Double, Double)
-data GameObject = GO { pos  :: Position
-                     , size :: Double
-                     } deriving (Show)
-
-go screen s w = do
-
-    evts <- accumEvent
-
-    (ds, s') <- stepSession s
-    (ex, w') <- stepWire w ds (Right evts)
-
-    let x' = either (const (GO (0, 0) 50)) id ex
-    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 255 255 255 >>= 
-        SDL.fillRect screen Nothing
-
-    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 0 50 200 >>= do
-        let xPos    = round . fst . pos $ x'
-        let yPos    = round . snd . pos $ x'
-        let goSize  = round . size      $ x'
-        SDL.fillRect screen (Just $ SDL.Rect xPos yPos goSize goSize)
-
-    SDL.flip screen
-    SDL.delay (1000 `div` 60)
-    go screen s' w' 
 
 
 delayGo :: Wire s e m GameObject GameObject
