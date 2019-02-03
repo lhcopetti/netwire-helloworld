@@ -238,11 +238,9 @@ data MemoryCommand = MSave | MGet
 
 memoryDriver :: Monoid e => Maybe a -> Wire s e m (Maybe MemoryCommand, a) a
 memoryDriver mMemory = mkPureN $ \commAndValue ->
-    let (newmMemory, result) = memoryDriver' mMemory commAndValue
-    in (result, memoryDriver newmMemory)
+    let driver _         (Just MSave, value) = (Just value, Left mempty)
+        driver (Just x)  (Just MGet, _)      = (Just x    , Right x)
+        driver stored    _                   = (stored    , Left mempty)
 
-memoryDriver' :: Monoid e => Maybe a -> (Maybe MemoryCommand, a) -> (Maybe a, Either e a)
-memoryDriver' _         (Just MSave, value) = (Just value, Left mempty)
-memoryDriver' (Just x)  (Just MGet, _)      = (Just x    , Right x)
-memoryDriver' stored    _                   = (stored    , Left mempty)
-
+        (newmMemory, result) = driver mMemory commAndValue
+    in  (result, memoryDriver newmMemory)
