@@ -14,7 +14,7 @@ import Control.Monad.IO.Class
 import Control.Wire
 import FRP.Netwire
 import Data.Maybe (fromMaybe)
-import Data.Bifunctor (bimap)
+import qualified Data.Bifunctor as Bi (bimap, first)
 import qualified Graphics.UI.SDL as SDL
 
 data ADirection = DLeft | DRight | DUp | DDown | DNothing
@@ -155,8 +155,8 @@ positionW :: (HasTime t s, Monad m) => Wire s e m (Either Double Double, Either 
 positionW = integralE 75 *** integralE 75
 
 positionW2 :: (HasTime t s, Monad m) => Wire s e m (Either Position Position) Position
-positionW2 = let go (Left tp) = bimap Left Left tp 
-                 go (Right tp) = bimap Right Right tp
+positionW2 = let go (Left tp) = Bi.bimap Left Left tp 
+                 go (Right tp) = Bi.bimap Right Right tp
              in mkSF_ (\tp -> go tp) >>> positionW
 
 
@@ -202,15 +202,14 @@ nextDirection :: Monad m => Wire s e m (GameObject, [SDL.Keysym]) ADirection
 nextDirection = second (mkSF_ dirFromInput) >>> selectDirection DNothing
 
 dirFromInput :: [SDL.Keysym] -> Maybe ADirection
-dirFromInput evts =  
-    let resolve [] = Nothing
-        resolve xs = Just P.. snd P.. head $ xs
-    in  resolve 
-            P.. filter (\ (p, _) -> p) 
-            P.. overFst (isKeyPressed evts) $ actions
+dirFromInput evts = safeHead Nothing
+                        P.. map (Just . snd)
+                        P.. filter fst
+                        P.. map (Bi.first (isKeyPressed evts)) $ actions
 
-overFst :: (a -> c) -> [(a, b)] -> [(c, b)]
-overFst f = liftA2 zip (map (f . fst)) (map snd)
+safeHead :: a -> [a] -> a
+safeHead x [] = x
+safeHead _ (x:_) = x
 
 actions :: [(SDL.SDLKey, ADirection)]
 actions =  [ (SDL.SDLK_LEFT, DLeft)
