@@ -5,6 +5,7 @@ module Main where
 
 import Prelude hiding ((.), id)
 
+import Data.Either
 import Control.Monad.Fix (MonadFix)
 import Control.Wire
 import FRP.Netwire
@@ -128,10 +129,10 @@ controlCounterV =   fireAndDelay MSave . when (`isKeyPressed` SDL.SDLK_a)
                 <|> fireAndDelay MGet . when (`isKeyPressed` SDL.SDLK_s)
                 <|> (pure Nothing)
 
-positionW :: (HasTime t s, Monad m) => Wire s e m (Either Double Double, Either Double Double) Position
+positionW :: (Monoid e, HasTime t s, Monad m) => Wire s e m (Either Double Double, Either Double Double) Position
 positionW = integralE 75 *** integralE 75
 
-positionW2 :: (HasTime t s, Monad m) => Wire s e m (Either Position Position) Position
+positionW2 :: (Monoid e, HasTime t s, Monad m) => Wire s e m (Either Position Position) Position
 positionW2 = let go (Left tp) = Bi.bimap Left Left tp 
                  go (Right tp) = Bi.bimap Right Right tp
              in mkSF_ (\tp -> go tp) >>> positionW
@@ -144,17 +145,16 @@ mapSpeed DUp      = (0, -150.0)
 mapSpeed DDown    = (0, 150.0 )
 mapSpeed DNothing = (0.0, 0.0)
 
-integralE :: (Fractional a, HasTime t s) => a -> Wire s e m (Either a a) a
-integralE x = mkSF $ \ds dx -> let
-    newValue = integralE' x ds dx
-    in (newValue, integralE newValue)
+integralE :: (Monad m, Monoid e, Fractional a, HasTime t s) => a -> Wire s e m (Either a a) a
+integralE start = 
+    integral start . arr fromEither . when isRight
+    --> mkSFN (\epos -> 
+        let newValue = fromEither epos
+        in  (newValue, integralE newValue))
 
-integralE' :: (Fractional a, HasTime t s) => a -> s -> Either a a -> a
-integralE' _ _ (Left x) = x
-integralE' x ds (Right dx) = let
-    dt = realToFrac (dtime ds)
-    in x + dt * dx
-
+fromEither :: Either a a -> a
+fromEither (Left x)  = x
+fromEither (Right x) = x
 
 nextDirection :: Monad m => Wire s e m (GameObject, [SDL.Keysym]) Direction
 nextDirection = second (mkSF_ dirFromInput) >>> selectDirection DNothing
