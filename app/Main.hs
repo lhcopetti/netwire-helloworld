@@ -4,13 +4,8 @@
 module Main where
 
 import Prelude hiding ((.), id)
-import qualified Prelude as P ((.), id)
 
 import Control.Monad.Fix (MonadFix)
-import qualified Control.Monad as MN
-import Data.Map (Map)
-import qualified Data.Map as M
-import Control.Monad.IO.Class
 import Control.Wire
 import FRP.Netwire
 import Data.Maybe (fromMaybe)
@@ -58,7 +53,7 @@ fireAndDelay v = mkSFN $ \_ ->
 controllablePosition :: (HasTime t s, Monoid e, MonadFix m) => Wire s e m (Maybe MemoryCommand, Velocity) Position
 controllablePosition = proc (cc, vel) -> do
     rec
-        input <- saveOrRestore <|> mkSF_ (Right P.. snd) -< ((cc, newPos), vel)
+        input <- saveOrRestore <|> mkSF_ (Right . snd) -< ((cc, newPos), vel)
         newPos <- positionW2 -< input
     returnA -< newPos
 
@@ -203,9 +198,9 @@ nextDirection = second (mkSF_ dirFromInput) >>> selectDirection DNothing
 
 dirFromInput :: [SDL.Keysym] -> Maybe ADirection
 dirFromInput evts = safeHead Nothing
-                        P.. map (Just . snd)
-                        P.. filter fst
-                        P.. map (Bi.first (isKeyPressed evts)) $ actions
+                        . map (Just . snd)
+                        . filter fst
+                        . map (Bi.first (isKeyPressed evts)) $ actions
 
 safeHead :: a -> [a] -> a
 safeHead x [] = x
@@ -251,7 +246,7 @@ forcedDown y
 
 
 isKeyPressed :: [SDL.Keysym] -> SDL.SDLKey -> Bool
-isKeyPressed xs key = not P.. null P.. filter (== key) P.. map SDL.symKey $ xs
+isKeyPressed xs key = not . null . filter (== key) . map SDL.symKey $ xs
 
 processKeys :: Monad m => [SDL.Keysym] -> Wire s e m [SDL.Event] [SDL.Keysym]
 processKeys keys = mkSFN $ \evts ->
