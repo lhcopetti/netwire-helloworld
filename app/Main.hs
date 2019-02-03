@@ -137,22 +137,6 @@ positionW2 = let go (Left tp) = Bi.bimap Left Left tp
              in mkSF_ (\tp -> go tp) >>> positionW
 
 
-
-data HnF = HActivate | HDont
-                deriving (Show)
-
--- holdAndFire :: 
-holdAndFire :: Maybe b -> (a -> b) -> (a -> b) -> Wire s e m (HnF, a) b
-holdAndFire current onActive onNothing = mkSFN $ \(hnf, a) ->
-    let (newAcc, res) = holdAndFire' current onActive onNothing hnf a
-    in (res, holdAndFire newAcc onActive onNothing)
-
-
-holdAndFire' :: Maybe b -> (a -> b) -> (a -> b) -> HnF -> a -> (Maybe b, b)
-holdAndFire' m         _            onNothing HDont     x = (m, onNothing x)
-holdAndFire' Nothing   onActivate   onNothing HActivate x = (Just (onActivate x), onNothing x) 
-holdAndFire' (Just x)  _            _         HActivate _ = (Nothing, x) 
-
 mapSpeed :: Direction -> Position
 mapSpeed DLeft    = (-150.0, 0)
 mapSpeed DRight   = (150.0,  0)
