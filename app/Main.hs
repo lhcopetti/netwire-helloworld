@@ -232,32 +232,23 @@ shouldForceDirection go = forcedRight go <|> forcedLeft go <|> forcedUp go <|> f
 
 forcedRight :: HasPosition a => a -> Maybe ADirection
 forcedRight x
-    | posX < 0 = Just DRight
+    | (fst . getPosition) x < 0 = Just DRight
     | otherwise = Nothing
-    where
-        (posX, _) = getPosition x
-    
 
 forcedLeft :: (HasSize a, HasPosition a) => a -> Maybe ADirection
 forcedLeft x
-    | xPos + getSize x > 200 = Just DLeft
+    | (fst . getPosition) x + getSize x > 200 = Just DLeft
     | otherwise = Nothing
-    where
-        (xPos, _) = getPosition x
 
 forcedUp :: (HasSize a, HasPosition a) => a -> Maybe ADirection
 forcedUp y
-    | yPos + getSize y > 200 = Just DUp
+    | (snd . getPosition) y + getSize y > 200 = Just DUp
     | otherwise = Nothing
-    where
-        (_, yPos) = getPosition y
 
 forcedDown :: HasPosition a => a -> Maybe ADirection
 forcedDown y
-    | yPos < 0 = Just DDown
+    | (snd . getPosition) y < 0 = Just DDown
     | otherwise = Nothing
-    where
-        (_, yPos) = getPosition y
 
 
 isKeyPressed :: [SDL.Keysym] -> SDL.SDLKey -> Bool
