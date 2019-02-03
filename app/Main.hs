@@ -9,13 +9,12 @@ import Control.Monad.Fix (MonadFix)
 import Control.Wire
 import FRP.Netwire
 import Data.Maybe (fromMaybe)
-import qualified Data.Bifunctor as Bi (bimap, first)
+import qualified Data.Bifunctor as Bi (bimap, first, second)
 import qualified Graphics.UI.SDL as SDL
 
 data Direction = DLeft | DRight | DUp | DDown | DNothing
     deriving(Eq, Show)
 
-data MemoryCommand = MSave | MGet
 
 class HasSize a where
     getSize :: a -> Double
@@ -84,18 +83,7 @@ controllablePosition = proc (cc, vel) -> do
     returnA -< newPos
 
 saveOrRestore :: (Monoid e, Monad m) => Wire s e m ((Maybe MemoryCommand, Position), Velocity) (Either Position Position)
-saveOrRestore = arr Left . cachePositionW Nothing . mkSF_ fst
-
-
-cachePositionW :: Monoid e => Maybe Position -> Wire s e m (Maybe MemoryCommand, Position) Position
-cachePositionW mPos = mkPureN $ \ccAndPos ->
-    let (newMPos, result) = cachePosition mPos ccAndPos
-    in (result, cachePositionW newMPos)
-
-cachePosition :: Monoid e => Maybe Position -> (Maybe MemoryCommand, Position) -> (Maybe Position, Either e Position)
-cachePosition _         (Just MSave, pos )  = (Just pos, Left mempty)
-cachePosition (Just x)  (Just MGet, _)  = (Just x  , Right x)
-cachePosition stored    _                   = (stored  , Left mempty)
+saveOrRestore = memoryDriver Nothing . mkSF_ (Bi.second Left . fst)
 
 
 delayGo :: Wire s e m GameObject GameObject
@@ -132,14 +120,13 @@ getSizeIncrement = (when (`isKeyPressed` SDL.SDLK_p) >>>  pure (25)) <|>
 toGo :: Monad m => Wire s e m (Position, Double) GameObject
 toGo = arr $ uncurry GO
 
+position :: (Monoid e, HasTime t s, MonadFix m) =>  Wire s e m ([SDL.Keysym], Direction) Position
+position = controlCounterV *** arr mapSpeed >>> controllablePosition
+
 controlCounterV :: (Monoid e, HasTime t s, Monad m) => Wire s e m [SDL.Keysym] (Maybe MemoryCommand)
 controlCounterV =   fireAndDelay MSave . when (`isKeyPressed` SDL.SDLK_a)
                 <|> fireAndDelay MGet . when (`isKeyPressed` SDL.SDLK_s)
                 <|> (pure Nothing)
-
-position :: (Monoid e, HasTime t s, MonadFix m) =>  Wire s e m ([SDL.Keysym], Direction) Position
-position = controlCounterV *** arr mapSpeed >>> controllablePosition
-
 
 positionW :: (HasTime t s, Monad m) => Wire s e m (Either Double Double, Either Double Double) Position
 positionW = integralE 75 *** integralE 75
@@ -260,4 +247,18 @@ accumEvent = go []
             case evt of
                 SDL.NoEvent -> return xs
                 evt' -> go (evt':xs)
+
+
+------------ Memory Wire ------------
+data MemoryCommand = MSave | MGet
+
+memoryDriver :: Monoid e => Maybe a -> Wire s e m (Maybe MemoryCommand, a) a
+memoryDriver mMemory = mkPureN $ \commAndValue ->
+    let (newmMemory, result) = memoryDriver' mMemory commAndValue
+    in (result, memoryDriver newmMemory)
+
+memoryDriver' :: Monoid e => Maybe a -> (Maybe MemoryCommand, a) -> (Maybe a, Either e a)
+memoryDriver' _         (Just MSave, value) = (Just value, Left mempty)
+memoryDriver' (Just x)  (Just MGet, _)      = (Just x    , Right x)
+memoryDriver' stored    _                   = (stored    , Left mempty)
 
