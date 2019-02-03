@@ -12,7 +12,7 @@ import Data.Maybe (fromMaybe)
 import qualified Data.Bifunctor as Bi (bimap, first)
 import qualified Graphics.UI.SDL as SDL
 
-data ADirection = DLeft | DRight | DUp | DDown | DNothing
+data Direction = DLeft | DRight | DUp | DDown | DNothing
     deriving(Eq, Show)
 
 data MemoryCommand = MSave | MRestore
@@ -142,7 +142,7 @@ controlCounterV =   fireAndDelay MSave . when (`isKeyPressed` SDL.SDLK_a)
                 <|> fireAndDelay MRestore . when (`isKeyPressed` SDL.SDLK_s)
                 <|> (pure Nothing)
 
-position :: (Monoid e, HasTime t s, MonadFix m) =>  Wire s e m ([SDL.Keysym], ADirection) Position
+position :: (Monoid e, HasTime t s, MonadFix m) =>  Wire s e m ([SDL.Keysym], Direction) Position
 position = controlCounterV *** arr mapSpeed >>> controllablePosition
 
 
@@ -171,7 +171,7 @@ holdAndFire' m         _            onNothing HDont     x = (m, onNothing x)
 holdAndFire' Nothing   onActivate   onNothing HActivate x = (Just (onActivate x), onNothing x) 
 holdAndFire' (Just x)  _            _         HActivate _ = (Nothing, x) 
 
-mapSpeed :: ADirection -> Position
+mapSpeed :: Direction -> Position
 mapSpeed DLeft    = (-150.0, 0)
 mapSpeed DRight   = (150.0,  0)
 mapSpeed DUp      = (0, -150.0)
@@ -193,10 +193,10 @@ integralE' x ds (Right dx) = let
     in x + dt * dx
 
 
-nextDirection :: Monad m => Wire s e m (GameObject, [SDL.Keysym]) ADirection
+nextDirection :: Monad m => Wire s e m (GameObject, [SDL.Keysym]) Direction
 nextDirection = second (mkSF_ dirFromInput) >>> selectDirection DNothing
 
-dirFromInput :: [SDL.Keysym] -> Maybe ADirection
+dirFromInput :: [SDL.Keysym] -> Maybe Direction
 dirFromInput evts = safeHead Nothing
                         . map (Just . snd)
                         . filter fst
@@ -206,7 +206,7 @@ safeHead :: a -> [a] -> a
 safeHead x [] = x
 safeHead _ (x:_) = x
 
-actions :: [(SDL.SDLKey, ADirection)]
+actions :: [(SDL.SDLKey, Direction)]
 actions =  [ (SDL.SDLK_LEFT, DLeft)
            , (SDL.SDLK_RIGHT, DRight)
            , (SDL.SDLK_UP, DUp)
@@ -214,32 +214,32 @@ actions =  [ (SDL.SDLK_LEFT, DLeft)
            , (SDL.SDLK_SPACE, DNothing)
            ] 
 
-selectDirection :: ADirection -> Wire s e m (GameObject, Maybe ADirection) ADirection
+selectDirection :: Direction -> Wire s e m (GameObject, Maybe Direction) Direction
 selectDirection previousDir = mkSFN $ \(go, dirFromInput) -> 
     let nextInputDir    = fromMaybe previousDir dirFromInput
         forcedNextDir   = shouldForceDirection go
         nextDir         = fromMaybe nextInputDir forcedNextDir
     in  (nextDir, selectDirection nextDir)
 
-shouldForceDirection :: GameObject -> Maybe ADirection
+shouldForceDirection :: GameObject -> Maybe Direction
 shouldForceDirection go = forcedRight go <|> forcedLeft go <|> forcedUp go <|> forcedDown go
 
-forcedRight :: HasPosition a => a -> Maybe ADirection
+forcedRight :: HasPosition a => a -> Maybe Direction
 forcedRight x
     | (fst . getPosition) x < 0 = Just DRight
     | otherwise = Nothing
 
-forcedLeft :: (HasSize a, HasPosition a) => a -> Maybe ADirection
+forcedLeft :: (HasSize a, HasPosition a) => a -> Maybe Direction
 forcedLeft x
     | (fst . getPosition) x + getSize x > 200 = Just DLeft
     | otherwise = Nothing
 
-forcedUp :: (HasSize a, HasPosition a) => a -> Maybe ADirection
+forcedUp :: (HasSize a, HasPosition a) => a -> Maybe Direction
 forcedUp y
     | (snd . getPosition) y + getSize y > 200 = Just DUp
     | otherwise = Nothing
 
-forcedDown :: HasPosition a => a -> Maybe ADirection
+forcedDown :: HasPosition a => a -> Maybe Direction
 forcedDown y
     | (snd . getPosition) y < 0 = Just DDown
     | otherwise = Nothing
