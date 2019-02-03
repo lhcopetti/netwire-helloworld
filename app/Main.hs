@@ -15,7 +15,7 @@ import qualified Graphics.UI.SDL as SDL
 data Direction = DLeft | DRight | DUp | DDown | DNothing
     deriving(Eq, Show)
 
-data MemoryCommand = MSave | MRestore
+data MemoryCommand = MSave | MGet
 
 class HasSize a where
     getSize :: a -> Double
@@ -68,7 +68,7 @@ cachePositionW mPos = mkPureN $ \ccAndPos ->
 
 cachePosition :: Monoid e => Maybe Position -> (Maybe MemoryCommand, Position) -> (Maybe Position, Either e Position)
 cachePosition _         (Just MSave, pos )  = (Just pos, Left mempty)
-cachePosition (Just x)  (Just MRestore, _)  = (Just x  , Right x)
+cachePosition (Just x)  (Just MGet, _)  = (Just x  , Right x)
 cachePosition stored    _                   = (stored  , Left mempty)
     
 mapInputControls :: (MemoryCommand, Position) -> Either Position Position
@@ -139,7 +139,7 @@ toGo = arr $ uncurry GO
 
 controlCounterV :: (Monoid e, HasTime t s, Monad m) => Wire s e m [SDL.Keysym] (Maybe MemoryCommand)
 controlCounterV =   fireAndDelay MSave . when (`isKeyPressed` SDL.SDLK_a)
-                <|> fireAndDelay MRestore . when (`isKeyPressed` SDL.SDLK_s)
+                <|> fireAndDelay MGet . when (`isKeyPressed` SDL.SDLK_s)
                 <|> (pure Nothing)
 
 position :: (Monoid e, HasTime t s, MonadFix m) =>  Wire s e m ([SDL.Keysym], Direction) Position
@@ -182,9 +182,6 @@ integralE :: (Fractional a, HasTime t s) => a -> Wire s e m (Either a a) a
 integralE x = mkSF $ \ds dx -> let
     newValue = integralE' x ds dx
     in (newValue, integralE newValue)
---mkSF $ \ds dx -> do
-    --let dt = realToFrac (dtime ds)
-    --in undefined
 
 integralE' :: (Fractional a, HasTime t s) => a -> s -> Either a a -> a
 integralE' _ _ (Left x) = x
