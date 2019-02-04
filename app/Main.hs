@@ -82,12 +82,12 @@ fireAndDelay v = mkSFN $ \_ ->
 controllablePosition :: (HasTime t s, Monoid e, MonadFix m) => Wire s e m (Maybe MemoryCommand, Velocity) Position
 controllablePosition = proc (cc, vel) -> do
     rec
-        input <- saveOrRestore <|> arr (Right . snd) -< ((cc, newPos), vel)
+        input <- saveOrRestore <|> arr (Integrate . snd) -< ((cc, newPos), vel)
         newPos <- positionW2 -< input
     returnA -< newPos
 
-saveOrRestore :: (Monoid e, Monad m) => Wire s e m ((Maybe MemoryCommand, Position), Velocity) (Either Position Position)
-saveOrRestore = memoryDriver Nothing . arr (Bi.second Left . fst)
+saveOrRestore :: (Monoid e, Monad m) => Wire s e m ((Maybe MemoryCommand, Position), Velocity) (IntegralCommand Position)
+saveOrRestore = memoryDriver Nothing . arr (Bi.second Set . fst)
 
 
 delayGo :: Wire s e m GameObject GameObject
@@ -132,12 +132,12 @@ controlCounterV =   fireAndDelay MSave . when (`isKeyPressed` SDL.SDLK_a)
                 <|> fireAndDelay MGet . when (`isKeyPressed` SDL.SDLK_s)
                 <|> (pure Nothing)
 
-positionW :: (Monoid e, HasTime t s, Monad m) => Wire s e m (Either Double Double, Either Double Double) Position
+positionW :: (Monoid e, HasTime t s, Monad m) => Wire s e m (IntegralCommand Double, IntegralCommand Double) Position
 positionW = integralE 75 *** integralE 75
 
-positionW2 :: (Monoid e, HasTime t s, Monad m) => Wire s e m (Either Position Position) Position
-positionW2 = let go (Left tp) = Bi.bimap Left Left tp 
-                 go (Right tp) = Bi.bimap Right Right tp
+positionW2 :: (Monoid e, HasTime t s, Monad m) => Wire s e m (IntegralCommand Position) Position
+positionW2 = let go (Integrate tp) = Bi.bimap Integrate Integrate tp 
+                 go (Set       tp) = Bi.bimap Set       Set       tp
              in arr (\tp -> go tp) >>> positionW
 
 mapSpeed :: Direction -> Position
@@ -147,12 +147,6 @@ mapSpeed DUp      = (0, -150.0)
 mapSpeed DDown    = (0, 150.0 )
 mapSpeed DNothing = (0.0, 0.0)
 
-integralE :: (Monad m, Monoid e, Fractional a, HasTime t s) => a -> Wire s e m (Either a a) a
-integralE start = 
-    integral start . arr fromEither . when isRight
-    --> mkSFN (\epos -> 
-        let newValue = fromEither epos
-        in  (newValue, integralE newValue))
 
 fromEither :: Either a a -> a
 fromEither (Left x)  = x
@@ -233,6 +227,25 @@ accumEvent = go []
             case evt of
                 SDL.NoEvent -> return xs
                 evt' -> go (evt':xs)
+
+
+------------ Conditional Integral ------------
+data IntegralCommand a = Integrate a | Set a
+
+integralE :: (Monad m, Monoid e, Fractional a, HasTime t s) => a -> Wire s e m (IntegralCommand a) a
+integralE start = 
+    integral start . arr integralCommandValue . when isIntegrate
+    --> mkSFN (\epos -> 
+        let newValue = integralCommandValue epos
+        in  (newValue, integralE newValue))
+
+isIntegrate :: IntegralCommand a -> Bool
+isIntegrate (Integrate _) = True
+isIntegrate (Set       _) = False
+
+integralCommandValue :: IntegralCommand a -> a
+integralCommandValue (Integrate v) = v
+integralCommandValue (Set       v) = v
 
 
 ------------ Memory Wire ------------
