@@ -79,12 +79,12 @@ fireAndDelay v = mkSFN $ \_ ->
 controllablePosition :: (HasTime t s, Monoid e, MonadFix m) => Wire s e m (Maybe MemoryCommand, Velocity) Position
 controllablePosition = proc (cc, vel) -> do
     rec
-        input <- saveOrRestore <|> mkSF_ (Right . snd) -< ((cc, newPos), vel)
+        input <- saveOrRestore <|> arr (Right . snd) -< ((cc, newPos), vel)
         newPos <- positionW2 -< input
     returnA -< newPos
 
 saveOrRestore :: (Monoid e, Monad m) => Wire s e m ((Maybe MemoryCommand, Position), Velocity) (Either Position Position)
-saveOrRestore = memoryDriver Nothing . mkSF_ (Bi.second Left . fst)
+saveOrRestore = memoryDriver Nothing . arr (Bi.second Left . fst)
 
 
 delayGo :: Wire s e m GameObject GameObject
@@ -135,8 +135,7 @@ positionW = integralE 75 *** integralE 75
 positionW2 :: (Monoid e, HasTime t s, Monad m) => Wire s e m (Either Position Position) Position
 positionW2 = let go (Left tp) = Bi.bimap Left Left tp 
                  go (Right tp) = Bi.bimap Right Right tp
-             in mkSF_ (\tp -> go tp) >>> positionW
-
+             in arr (\tp -> go tp) >>> positionW
 
 mapSpeed :: Direction -> Position
 mapSpeed DLeft    = (-150.0, 0)
@@ -157,7 +156,7 @@ fromEither (Left x)  = x
 fromEither (Right x) = x
 
 nextDirection :: Monad m => Wire s e m (GameObject, [SDL.Keysym]) Direction
-nextDirection = second (mkSF_ dirFromInput) >>> selectDirection DNothing
+nextDirection = second (arr dirFromInput) >>> selectDirection DNothing
 
 dirFromInput :: [SDL.Keysym] -> Maybe Direction
 dirFromInput evts = safeHead Nothing
