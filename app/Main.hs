@@ -104,13 +104,10 @@ updatePosition = proc (pressedKeys, go) -> do
         returnA -< newPos
 
 updateSize :: (HasTime t s, MonadFix m, Monoid e) => Wire s e m [SDL.Keysym] Double
-updateSize = getSizeIncrement &&& pure 0 >>> integralWith noNegative' 50
+updateSize = getSizeIncrement &&& pure 0 >>> integralWith noNegative 50
 
-noNegative' :: Double -> Double -> Double
-noNegative' _ = noNegative
-
-noNegative :: Double -> Double
-noNegative x
+noNegative :: Double -> Double -> Double
+noNegative _ x
     | x < 0 = 0
     | otherwise = x
 
