@@ -35,9 +35,12 @@ data GameObject = GO { pos  :: Position
                      , size :: Double
                      } deriving (Show)
 
+windowSize :: Num a => a
+windowSize = fromInteger 400
+
 main :: IO ()
 main = SDL.withInit [SDL.InitEverything] $ do
-    screen <- SDL.setVideoMode 200 200 32 [SDL.SWSurface]
+    screen <- SDL.setVideoMode windowSize windowSize 32 [SDL.SWSurface]
     go screen clockSession_ challenge4
 
 go screen s w = do
@@ -51,7 +54,7 @@ go screen s w = do
     (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 255 255 255 >>= 
         SDL.fillRect screen Nothing
 
-    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 0 50 200 >>= do
+    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 0 50 windowSize >>= do
         let xPos    = round . fst . pos $ x'
         let yPos    = round . snd . pos $ x'
         let goSize  = round . size      $ x'
@@ -193,12 +196,12 @@ forcedRight x
 
 forcedLeft :: (HasSize a, HasPosition a) => a -> Maybe Direction
 forcedLeft x
-    | (fst . getPosition) x + getSize x > 200 = Just DLeft
+    | (fst . getPosition) x + getSize x > windowSize = Just DLeft
     | otherwise = Nothing
 
 forcedUp :: (HasSize a, HasPosition a) => a -> Maybe Direction
 forcedUp y
-    | (snd . getPosition) y + getSize y > 200 = Just DUp
+    | (snd . getPosition) y + getSize y > windowSize = Just DUp
     | otherwise = Nothing
 
 forcedDown :: HasPosition a => a -> Maybe Direction
