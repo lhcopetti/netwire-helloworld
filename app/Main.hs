@@ -14,7 +14,7 @@ import qualified Data.Bifunctor as Bi (bimap, first, second)
 import qualified Graphics.UI.SDL as SDL
 
 data Direction = DLeft | DRight | DUp | DDown | DNothing
-    deriving(Eq, Show)
+    deriving (Eq, Show)
 
 
 class HasSize a where
@@ -31,13 +31,30 @@ instance HasPosition GameObject where
 
 type Position = (Double, Double)
 type Velocity = (Double, Double)
+
+
+
+------------ GameObject ------------
 data GameObject = GO { pos  :: Position
                      , size :: Double
                      } deriving (Show)
 
+delayGo :: Wire s e m GameObject GameObject
+delayGo = delay emptyGo
+
+emptyGo :: GameObject
+emptyGo = GO (0, 0) 0 
+
+toGo :: Monad m => Wire s e m (Position, Double) GameObject
+toGo = arr $ uncurry GO
+
+
+
 windowSize :: Num a => a
 windowSize = fromInteger 400
 
+
+------------ Main ------------
 main :: IO ()
 main = SDL.withInit [SDL.InitEverything] $ do
     screen <- SDL.setVideoMode windowSize windowSize 32 [SDL.SWSurface]
@@ -64,6 +81,7 @@ go screen s w = do
     SDL.delay (1000 `div` 60)
     go screen s' w' 
 
+
 challenge4 :: (HasTime t s, MonadFix m) => Wire s () m [SDL.Event] GameObject
 challenge4 = proc evts -> do
     pressedKeys <- processKeys [] -< evts
@@ -73,84 +91,66 @@ challenge4 = proc evts -> do
         newGo <- toGo -< (newPos, newSize)
     returnA -< newGo
 
-
-fireAndDelay :: (Monad m, HasTime t s, Monoid e) => MemoryCommand -> Wire s e m a (Maybe MemoryCommand)
-fireAndDelay v = mkSFN $ \_ -> 
-    let nextWire = (pure Nothing . for 1) --> fireAndDelay v
-    in  (Just v, nextWire)
-
-controllablePosition :: (HasTime t s, Monoid e, MonadFix m) => Wire s e m (Maybe MemoryCommand, Velocity) Position
-controllablePosition = proc (cc, vel) -> do
-    rec
-        input <- saveOrRestore <|> arr (Integrate . snd) -< ((cc, newPos), vel)
-        newPos <- positionW2 -< input
-    returnA -< newPos
-
-saveOrRestore :: (Monoid e, Monad m) => Wire s e m ((Maybe MemoryCommand, Position), Velocity) (IntegralCommand Position)
-saveOrRestore = memoryDriver Nothing . arr (Bi.second Set . fst)
-
-
-delayGo :: Wire s e m GameObject GameObject
-delayGo = delay emptyGo
-
-emptyGo :: GameObject
-emptyGo = GO (0, 0) 0 
-
-
-updatePosition :: (Monoid e, HasTime t s, MonadFix m) => Wire s e m ([SDL.Keysym], GameObject) Position
-updatePosition = proc (pressedKeys, go) -> do
-        direction <- nextDirection -< (go, pressedKeys)
-        newPos <- position -< (pressedKeys, direction)
-        returnA -< newPos
-
 updateSize :: (HasTime t s, MonadFix m, Monoid e) => Wire s e m [SDL.Keysym] Double
 updateSize = getSizeIncrement &&& pure 0 >>> integralWith noNegative 50
+
+getSizeIncrement :: (HasTime t s, MonadFix m, Monoid e) => Wire s e m [SDL.Keysym] Double
+getSizeIncrement =    (when (`isKeyPressed` SDL.SDLK_p) >>>  pure (25))
+                  <|> (when (`isKeyPressed` SDL.SDLK_m) >>>  pure (-25))
+                  <|> pure 0
 
 noNegative :: Double -> Double -> Double
 noNegative _ x
     | x < 0 = 0
     | otherwise = x
 
-getSizeIncrement :: (HasTime t s, MonadFix m, Monoid e) => Wire s e m [SDL.Keysym] Double
-getSizeIncrement = (when (`isKeyPressed` SDL.SDLK_p) >>>  pure (25)) <|>
-                   (when (`isKeyPressed` SDL.SDLK_m) >>>  pure (-25)) <|>
-                   pure 0
 
+updatePosition :: (Monoid e, HasTime t s, MonadFix m) =>  Wire s e m ([SDL.Keysym], GameObject) Position
+updatePosition = mapInputTeleport . arr fst &&& mapInputSpeed >>> resolvePosition
 
-
-toGo :: Monad m => Wire s e m (Position, Double) GameObject
-toGo = arr $ uncurry GO
-
-position :: (Monoid e, HasTime t s, MonadFix m) =>  Wire s e m ([SDL.Keysym], Direction) Position
-position = controlCounterV *** arr mapSpeed >>> controllablePosition
-
-controlCounterV :: (Monoid e, HasTime t s, Monad m) => Wire s e m [SDL.Keysym] (Maybe MemoryCommand)
-controlCounterV =   fireAndDelay MSave . when (`isKeyPressed` SDL.SDLK_a)
+mapInputTeleport :: (Monoid e, HasTime t s, Monad m) => Wire s e m [SDL.Keysym] (Maybe MemoryCommand)
+mapInputTeleport =   fireAndDelay MSave . when (`isKeyPressed` SDL.SDLK_a)
                 <|> fireAndDelay MGet . when (`isKeyPressed` SDL.SDLK_s)
                 <|> (pure Nothing)
 
-positionW :: (Monoid e, HasTime t s, Monad m) => Wire s e m (IntegralCommand Double, IntegralCommand Double) Position
-positionW = integralE 75 *** integralE 75
+fireAndDelay :: (Monad m, HasTime t s, Monoid e) => MemoryCommand -> Wire s e m a (Maybe MemoryCommand)
+fireAndDelay v = mkSFN $ \_ -> 
+    let nextWire = (pure Nothing . for 1) --> fireAndDelay v
+    in  (Just v, nextWire)
+
+mapInputSpeed :: (Monoid e, HasTime t s, MonadFix m) =>  Wire s e m ([SDL.Keysym], GameObject) Velocity
+mapInputSpeed =
+    let speed DLeft    = (-150.0, 0)
+        speed DRight   = (150.0,  0)
+        speed DUp      = (0, -150.0)
+        speed DDown    = (0, 150.0 )
+        speed DNothing = (0.0, 0.0)
+    in  nextDirection >>> arr speed
+        
+
+resolvePosition :: (HasTime t s, Monoid e, MonadFix m) => Wire s e m (Maybe MemoryCommand, Velocity) Position
+resolvePosition = proc (memCommand, vel) -> do
+    rec
+        input <- saveOrRestorePosition <|> integrateVelocity -< ((memCommand, newPos), vel)
+        newPos <- positionW2 -< input
+    returnA -< newPos
+
+saveOrRestorePosition :: (Monoid e, Monad m) => Wire s e m ((Maybe MemoryCommand, Position), Velocity) (IntegralCommand Position)
+saveOrRestorePosition = memoryDriver Nothing . arr (Bi.second Set . fst)
+
+integrateVelocity :: Monad m => Wire s e m ((Maybe MemoryCommand, Position), Velocity) (IntegralCommand Velocity)
+integrateVelocity = arr (Integrate . snd)
 
 positionW2 :: (Monoid e, HasTime t s, Monad m) => Wire s e m (IntegralCommand Position) Position
 positionW2 = let go (Integrate tp) = Bi.bimap Integrate Integrate tp 
                  go (Set       tp) = Bi.bimap Set       Set       tp
              in arr (\tp -> go tp) >>> positionW
 
-mapSpeed :: Direction -> Position
-mapSpeed DLeft    = (-150.0, 0)
-mapSpeed DRight   = (150.0,  0)
-mapSpeed DUp      = (0, -150.0)
-mapSpeed DDown    = (0, 150.0 )
-mapSpeed DNothing = (0.0, 0.0)
+positionW :: (Monoid e, HasTime t s, Monad m) => Wire s e m (IntegralCommand Double, IntegralCommand Double) Position
+positionW = integralE 75 *** integralE 75
 
-
-fromEither :: Either a a -> a
-fromEither (Left x)  = x
-fromEither (Right x) = x
-
-nextDirection :: Monad m => Wire s e m (GameObject, [SDL.Keysym]) Direction
-nextDirection = second (arr dirFromInput) >>> selectDirection DNothing
+nextDirection :: Monad m => Wire s e m ([SDL.Keysym], GameObject) Direction
+nextDirection = first (arr dirFromInput) >>> selectDirection DNothing
 
 dirFromInput :: [SDL.Keysym] -> Maybe Direction
 dirFromInput evts = safeHead Nothing
@@ -170,8 +170,8 @@ actions =  [ (SDL.SDLK_LEFT, DLeft)
            , (SDL.SDLK_SPACE, DNothing)
            ] 
 
-selectDirection :: Direction -> Wire s e m (GameObject, Maybe Direction) Direction
-selectDirection previousDir = mkSFN $ \(go, dirFromInput) -> 
+selectDirection :: Direction -> Wire s e m (Maybe Direction, GameObject) Direction
+selectDirection previousDir = mkSFN $ \(dirFromInput, go) -> 
     let nextInputDir    = fromMaybe previousDir dirFromInput
         forcedNextDir   = shouldForceDirection go
         nextDir         = fromMaybe nextInputDir forcedNextDir
@@ -201,6 +201,7 @@ forcedDown y
     | otherwise = Nothing
 
 
+------------ SDL Input Events ------------
 isKeyPressed :: [SDL.Keysym] -> SDL.SDLKey -> Bool
 isKeyPressed xs key = not . null . filter (== key) . map SDL.symKey $ xs
 
