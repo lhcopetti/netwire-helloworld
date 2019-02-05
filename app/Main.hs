@@ -46,13 +46,21 @@ emptyGo :: GameObject
 emptyGo = GO (0, 0) 0 
 
 toGo :: Monad m => Wire s e m (Position, Double) GameObject
-toGo = arr $ uncurry GO
+toGo = arr (uncurry GO)
 
 
-
+------------ Constants ------------
 windowSize :: Num a => a
 windowSize = fromInteger 400
 
+blockVelocity :: Double
+blockVelocity = 150.0
+
+blockInitialSize :: Double
+blockInitialSize = 50
+
+blockChangeSizeSpeed :: Double
+blockChangeSizeSpeed = 25
 
 ------------ Main ------------
 main :: IO ()
@@ -67,11 +75,11 @@ go screen s w = do
     (ds, s') <- stepSession s
     (ex, w') <- stepWire w ds (Right evts)
 
-    let x' = either (const (GO (0, 0) 50)) id ex
+    let x' = either (const (GO (0, 0) blockInitialSize)) id ex
     (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 255 255 255 >>= 
         SDL.fillRect screen Nothing
 
-    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 0 50 windowSize >>= do
+    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 0 50 100 >>= do
         let xPos    = round . fst . pos $ x'
         let yPos    = round . snd . pos $ x'
         let goSize  = round . size      $ x'
@@ -95,8 +103,8 @@ updateSize :: (HasTime t s, MonadFix m, Monoid e) => Wire s e m [SDL.Keysym] Dou
 updateSize = getSizeIncrement &&& pure 0 >>> integralWith noNegative 50
 
 getSizeIncrement :: (HasTime t s, MonadFix m, Monoid e) => Wire s e m [SDL.Keysym] Double
-getSizeIncrement =    (when (`isKeyPressed` SDL.SDLK_p) >>>  pure (25))
-                  <|> (when (`isKeyPressed` SDL.SDLK_m) >>>  pure (-25))
+getSizeIncrement =    (when (`isKeyPressed` SDL.SDLK_p) >>>  pure (blockChangeSizeSpeed))
+                  <|> (when (`isKeyPressed` SDL.SDLK_m) >>>  pure (-blockChangeSizeSpeed))
                   <|> pure 0
 
 noNegative :: Double -> Double -> Double
@@ -120,10 +128,10 @@ fireAndDelay v = mkSFN $ \_ ->
 
 mapInputSpeed :: (Monoid e, HasTime t s, MonadFix m) =>  Wire s e m ([SDL.Keysym], GameObject) Velocity
 mapInputSpeed =
-    let speed DLeft    = (-150.0, 0)
-        speed DRight   = (150.0,  0)
-        speed DUp      = (0, -150.0)
-        speed DDown    = (0, 150.0 )
+    let speed DLeft    = (-blockVelocity, 0)
+        speed DRight   = (blockVelocity,  0)
+        speed DUp      = (0, -blockVelocity)
+        speed DDown    = (0, blockVelocity )
         speed DNothing = (0.0, 0.0)
     in  nextDirection >>> arr speed
         
