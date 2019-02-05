@@ -114,7 +114,7 @@ noNegative _ x
 
 
 updatePosition :: (Monoid e, HasTime t s, MonadFix m) =>  Wire s e m ([SDL.Keysym], GameObject) Position
-updatePosition = mapInputTeleport . arr fst &&& mapInputSpeed >>> resolvePosition
+updatePosition = (fst ^>> mapInputTeleport) &&& mapInputSpeed >>> resolvePosition
 
 mapInputTeleport :: (Monoid e, HasTime t s, Monad m) => Wire s e m [SDL.Keysym] (Maybe MemoryCommand)
 mapInputTeleport =   fireAndDelay MSave . when (`isKeyPressed` SDL.SDLK_a)
@@ -133,7 +133,7 @@ mapInputSpeed =
         speed DUp      = (0, -blockVelocity)
         speed DDown    = (0, blockVelocity )
         speed DNothing = (0.0, 0.0)
-    in  nextDirection >>> arr speed
+    in  nextDirection >>^ speed
         
 
 resolvePosition :: (HasTime t s, Monoid e, MonadFix m) => Wire s e m (Maybe MemoryCommand, Velocity) Position
@@ -144,7 +144,7 @@ resolvePosition = proc (memCommand, vel) -> do
     returnA -< newPos
 
 saveOrRestorePosition :: (Monoid e, Monad m) => Wire s e m ((Maybe MemoryCommand, Position), Velocity) (IntegralCommand Position)
-saveOrRestorePosition = memoryDriver Nothing . arr (Bi.second Set . fst)
+saveOrRestorePosition = Bi.second Set . fst ^>> memoryDriver Nothing  
 
 integrateVelocity :: Monad m => Wire s e m ((Maybe MemoryCommand, Position), Velocity) (IntegralCommand Velocity)
 integrateVelocity = arr (Integrate . snd)
@@ -152,7 +152,7 @@ integrateVelocity = arr (Integrate . snd)
 positionW2 :: (Monoid e, HasTime t s, Monad m) => Wire s e m (IntegralCommand Position) Position
 positionW2 = let go (Integrate tp) = Bi.bimap Integrate Integrate tp 
                  go (Set       tp) = Bi.bimap Set       Set       tp
-             in arr (\tp -> go tp) >>> positionW
+             in (\tp -> go tp) ^>> positionW
 
 positionW :: (Monoid e, HasTime t s, Monad m) => Wire s e m (IntegralCommand Double, IntegralCommand Double) Position
 positionW = integralE 75 *** integralE 75
