@@ -1,5 +1,4 @@
 {-# LANGUAGE Arrows #-}
-{-# LANGUAGE RecordWildCards #-}
 
 module Main where
 
@@ -57,7 +56,7 @@ toSquare = arr (uncurry Sq)
 
 ------------ Constants ------------
 windowSize :: Num a => a
-windowSize = fromInteger 400
+windowSize = 400
 
 blockVelocity :: Double
 blockVelocity = 300.0
@@ -103,7 +102,7 @@ updateSize :: (HasTime t s, MonadFix m, Monoid e) => Wire s e m [SDL.Keysym] Dou
 updateSize = getSizeIncrement &&& pure 0 >>> integralWith noNegative blockInitialSize
 
 getSizeIncrement :: (HasTime t s, MonadFix m, Monoid e) => Wire s e m [SDL.Keysym] Double
-getSizeIncrement =    (when (`isKeyPressed` SDL.SDLK_p) >>>  pure (blockChangeSizeSpeed))
+getSizeIncrement =    (when (`isKeyPressed` SDL.SDLK_p) >>>  pure blockChangeSizeSpeed)
                   <|> (when (`isKeyPressed` SDL.SDLK_m) >>>  pure (-blockChangeSizeSpeed))
                   <|> pure 0
 
@@ -119,7 +118,7 @@ updatePosition = (fst ^>> mapInputTeleport) &&& mapInputSpeed >>> resolvePositio
 mapInputTeleport :: (Monoid e, HasTime t s, Monad m) => Wire s e m [SDL.Keysym] (Maybe MemoryCommand)
 mapInputTeleport =   fireAndDelay MSave . when (`isKeyPressed` SDL.SDLK_a)
                 <|> fireAndDelay MGet . when (`isKeyPressed` SDL.SDLK_s)
-                <|> (pure Nothing)
+                <|> pure Nothing
 
 fireAndDelay :: (Monad m, HasTime t s, Monoid e) => MemoryCommand -> Wire s e m a (Maybe MemoryCommand)
 fireAndDelay v = mkSFN $ \_ -> 
@@ -152,7 +151,7 @@ integrateVelocity = arr (Integrate . snd)
 positionW2 :: (Monoid e, HasTime t s, Monad m) => Wire s e m (IntegralCommand Position) Position
 positionW2 = let go (Integrate tp) = Bi.bimap Integrate Integrate tp 
                  go (Set       tp) = Bi.bimap Set       Set       tp
-             in (\tp -> go tp) ^>> positionW
+             in go ^>> positionW
 
 positionW :: (Monoid e, HasTime t s, Monad m) => Wire s e m (IntegralCommand Double, IntegralCommand Double) Position
 positionW = integralE 75 *** integralE 75
@@ -227,7 +226,7 @@ drawSquare screen (r, g, b) sq =
 
 ------------ SDL Input Events ------------
 isKeyPressed :: [SDL.Keysym] -> SDL.SDLKey -> Bool
-isKeyPressed xs key = not . null . filter (== key) . map SDL.symKey $ xs
+isKeyPressed xs key = elem key . map SDL.symKey $ xs
 
 processKeys :: Monad m => [SDL.Keysym] -> Wire s e m [SDL.Event] [SDL.Keysym]
 processKeys keys = mkSFN $ \evts ->
