@@ -60,13 +60,13 @@ windowSize :: Num a => a
 windowSize = fromInteger 400
 
 blockVelocity :: Double
-blockVelocity = 150.0
+blockVelocity = 300.0
 
 blockInitialSize :: Double
-blockInitialSize = 50
+blockInitialSize = 75
 
 blockChangeSizeSpeed :: Double
-blockChangeSizeSpeed = 25
+blockChangeSizeSpeed = 200
 
 ------------ Main ------------
 main :: IO ()
@@ -100,7 +100,7 @@ challenge4 = proc evts -> do
     returnA -< newGo
 
 updateSize :: (HasTime t s, MonadFix m, Monoid e) => Wire s e m [SDL.Keysym] Double
-updateSize = getSizeIncrement &&& pure 0 >>> integralWith noNegative 50
+updateSize = getSizeIncrement &&& pure 0 >>> integralWith noNegative blockInitialSize
 
 getSizeIncrement :: (HasTime t s, MonadFix m, Monoid e) => Wire s e m [SDL.Keysym] Double
 getSizeIncrement =    (when (`isKeyPressed` SDL.SDLK_p) >>>  pure (blockChangeSizeSpeed))
