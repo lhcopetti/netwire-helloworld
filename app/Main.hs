@@ -10,6 +10,7 @@ import Control.Monad.Fix (MonadFix)
 import Control.Wire
 import FRP.Netwire
 import Data.Maybe (fromMaybe)
+import Data.Word (Word8)
 import qualified Data.Bifunctor as Bi (bimap, first, second)
 import qualified Graphics.UI.SDL as SDL
 
@@ -23,10 +24,16 @@ class HasSize a where
 class HasPosition a where
     getPosition :: a -> Position
 
-instance HasSize GameObject where
+    getX :: a -> Double
+    getX = fst . getPosition
+
+    getY :: a -> Double
+    getY = snd . getPosition
+
+instance HasSize Square where
     getSize = size
 
-instance HasPosition GameObject where
+instance HasPosition Square where
     getPosition = pos
 
 type Position = (Double, Double)
@@ -34,20 +41,19 @@ type Velocity = (Double, Double)
 
 
 
------------- GameObject ------------
-data GameObject = GO { pos  :: Position
-                     , size :: Double
-                     } deriving (Show)
+------------ Square ------------
+data Square = Sq { pos  :: Position
+                 , size :: Double
+                 } deriving (Show)
 
-delayGo :: Wire s e m GameObject GameObject
-delayGo = delay emptyGo
+delaySquare :: Wire s e m Square Square
+delaySquare = delay emptySquare
 
-emptyGo :: GameObject
-emptyGo = GO (0, 0) 0 
+emptySquare :: Square
+emptySquare = Sq (0, 0) 0 
 
-toGo :: Monad m => Wire s e m (Position, Double) GameObject
-toGo = arr (uncurry GO)
-
+toSquare :: Monad m => Wire s e m (Position, Double) Square
+toSquare = arr (uncurry Sq)
 
 ------------ Constants ------------
 windowSize :: Num a => a
@@ -75,28 +81,22 @@ go screen s w = do
     (ds, s') <- stepSession s
     (ex, w') <- stepWire w ds (Right evts)
 
-    let x' = either (const (GO (0, 0) blockInitialSize)) id ex
-    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 255 255 255 >>= 
-        SDL.fillRect screen Nothing
-
-    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen 0 50 100 >>= do
-        let xPos    = round . fst . pos $ x'
-        let yPos    = round . snd . pos $ x'
-        let goSize  = round . size      $ x'
-        SDL.fillRect screen (Just $ SDL.Rect xPos yPos goSize goSize)
+    let x' = either (const (Sq (0, 0) blockInitialSize)) id ex
+    clearScreen screen (255, 255, 255)
+    drawSquare screen (0, 50, 100) x'
 
     SDL.flip screen
     SDL.delay (1000 `div` 60)
     go screen s' w' 
 
 
-challenge4 :: (HasTime t s, MonadFix m) => Wire s () m [SDL.Event] GameObject
+challenge4 :: (HasTime t s, MonadFix m) => Wire s () m [SDL.Event] Square
 challenge4 = proc evts -> do
     pressedKeys <- processKeys [] -< evts
     rec
-        newPos <- updatePosition <<< second delayGo -< (pressedKeys, newGo)
+        newPos <- updatePosition <<< second delaySquare -< (pressedKeys, newGo)
         newSize <- updateSize -< pressedKeys
-        newGo <- toGo -< (newPos, newSize)
+        newGo <- toSquare -< (newPos, newSize)
     returnA -< newGo
 
 updateSize :: (HasTime t s, MonadFix m, Monoid e) => Wire s e m [SDL.Keysym] Double
@@ -113,7 +113,7 @@ noNegative _ x
     | otherwise = x
 
 
-updatePosition :: (Monoid e, HasTime t s, MonadFix m) =>  Wire s e m ([SDL.Keysym], GameObject) Position
+updatePosition :: (Monoid e, HasTime t s, MonadFix m) =>  Wire s e m ([SDL.Keysym], Square) Position
 updatePosition = (fst ^>> mapInputTeleport) &&& mapInputSpeed >>> resolvePosition
 
 mapInputTeleport :: (Monoid e, HasTime t s, Monad m) => Wire s e m [SDL.Keysym] (Maybe MemoryCommand)
@@ -126,7 +126,7 @@ fireAndDelay v = mkSFN $ \_ ->
     let nextWire = (pure Nothing . for 1) --> fireAndDelay v
     in  (Just v, nextWire)
 
-mapInputSpeed :: (Monoid e, HasTime t s, MonadFix m) =>  Wire s e m ([SDL.Keysym], GameObject) Velocity
+mapInputSpeed :: (Monoid e, HasTime t s, MonadFix m) =>  Wire s e m ([SDL.Keysym], Square) Velocity
 mapInputSpeed =
     let speed DLeft    = (-blockVelocity, 0)
         speed DRight   = (blockVelocity,  0)
@@ -157,7 +157,7 @@ positionW2 = let go (Integrate tp) = Bi.bimap Integrate Integrate tp
 positionW :: (Monoid e, HasTime t s, Monad m) => Wire s e m (IntegralCommand Double, IntegralCommand Double) Position
 positionW = integralE 75 *** integralE 75
 
-nextDirection :: Monad m => Wire s e m ([SDL.Keysym], GameObject) Direction
+nextDirection :: Monad m => Wire s e m ([SDL.Keysym], Square) Direction
 nextDirection = first (arr dirFromInput) >>> selectDirection DNothing
 
 dirFromInput :: [SDL.Keysym] -> Maybe Direction
@@ -178,36 +178,52 @@ actions =  [ (SDL.SDLK_LEFT, DLeft)
            , (SDL.SDLK_SPACE, DNothing)
            ] 
 
-selectDirection :: Direction -> Wire s e m (Maybe Direction, GameObject) Direction
+selectDirection :: Direction -> Wire s e m (Maybe Direction, Square) Direction
 selectDirection previousDir = mkSFN $ \(dirFromInput, go) -> 
     let nextInputDir    = fromMaybe previousDir dirFromInput
         forcedNextDir   = shouldForceDirection go
         nextDir         = fromMaybe nextInputDir forcedNextDir
     in  (nextDir, selectDirection nextDir)
 
-shouldForceDirection :: GameObject -> Maybe Direction
+shouldForceDirection :: Square -> Maybe Direction
 shouldForceDirection go = forcedRight go <|> forcedLeft go <|> forcedUp go <|> forcedDown go
 
-forcedRight :: HasPosition a => a -> Maybe Direction
-forcedRight x
-    | (fst . getPosition) x < 0 = Just DRight
+forcedRight :: (HasSize a, HasPosition a) => a -> Maybe Direction
+forcedRight obj
+    | getX obj - getSize obj / 2 < 0 = Just DRight
     | otherwise = Nothing
 
 forcedLeft :: (HasSize a, HasPosition a) => a -> Maybe Direction
-forcedLeft x
-    | (fst . getPosition) x + getSize x > windowSize = Just DLeft
+forcedLeft obj
+    | getX obj + getSize obj / 2 > windowSize = Just DLeft
     | otherwise = Nothing
 
 forcedUp :: (HasSize a, HasPosition a) => a -> Maybe Direction
-forcedUp y
-    | (snd . getPosition) y + getSize y > windowSize = Just DUp
+forcedUp obj
+    | getY obj + getSize obj / 2 > windowSize = Just DUp
     | otherwise = Nothing
 
-forcedDown :: HasPosition a => a -> Maybe Direction
-forcedDown y
-    | (snd . getPosition) y < 0 = Just DDown
+forcedDown :: (HasSize a, HasPosition a) => a -> Maybe Direction
+forcedDown obj
+    | getY obj - getSize obj / 2 < 0 = Just DDown
     | otherwise = Nothing
 
+
+------------ SDL Graphics ------------
+clearScreen :: SDL.Surface -> (Word8, Word8, Word8) -> IO Bool
+clearScreen screen (r, g, b) = 
+    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen r g b >>= 
+    SDL.fillRect screen Nothing
+
+drawSquare :: SDL.Surface -> (Word8, Word8, Word8) -> Square -> IO Bool
+drawSquare screen (r, g, b) sq =
+    (SDL.mapRGB . SDL.surfaceGetPixelFormat) screen r g b >>=
+        let xPos = round . origin . fst . pos $ sq
+            yPos = round . origin . snd . pos $ sq
+            sz   = round . size   $ sq
+        in  SDL.fillRect screen (Just $ SDL.Rect xPos yPos sz sz)
+    where
+        origin position = position - size sq / 2
 
 ------------ SDL Input Events ------------
 isKeyPressed :: [SDL.Keysym] -> SDL.SDLKey -> Bool
@@ -265,3 +281,5 @@ memoryDriver mMemory = mkPureN $ \commAndValue ->
 
         (newmMemory, result) = driver mMemory commAndValue
     in  (result, memoryDriver newmMemory)
+
+
